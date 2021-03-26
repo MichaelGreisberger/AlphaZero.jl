@@ -570,7 +570,7 @@ end
 
 function print_possible_action_strings(spec::GameSpec, g::GameEnv)
     for action in GI.actions(spec)[g.action_mask]
-        println(action_string(spec, action) * " ($action)")
+        println(GI.action_string(spec, action) * " ($action)")
     end
 end
 
@@ -585,8 +585,8 @@ end
 function run_test()
     spec = GameSpec()
     env = GI.init(spec)
-    while !game_terminated(env)
-        println(render(env))
+    while !GI.game_terminated(env)
+        println(GI.render(env))
         println("its player " * (env.curplayer == WHITE ? " white's " : " black's ") * "turn!")
         println("possible moves are: ")
         print_possible_action_strings(spec, env)
