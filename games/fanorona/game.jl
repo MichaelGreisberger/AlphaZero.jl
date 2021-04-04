@@ -60,19 +60,20 @@ end
 mutable struct GameEnv <: GI.AbstractGameEnv
     spec :: GameSpec
     board :: Board
-    curplayer :: Player
+    current_player :: Player
     white_pieces :: Int
     black_pieces :: Int
     action_mask :: Array{Bool}
     extended_capture :: Bool
-    last_positions :: Any
+    current_position :: Tuple
+    last_positions :: Array{Tuple}
     last_direction :: Int
 end
 
 function GI.init(spec::GameSpec)
   board = copy(INITIAL_STATE.board)
   curplayer = INITIAL_STATE.curplayer
-  env = GameEnv(spec, board, curplayer, PIECES_PER_PLAYER, PIECES_PER_PLAYER, [], false, nothing, 0)
+  env = GameEnv(spec, board, curplayer, PIECES_PER_PLAYER, PIECES_PER_PLAYER, [], false, (0, 0), [], 0)
   update_actions_mask!(env)
   return env
 end
@@ -101,23 +102,33 @@ end
 
 # TODO: Update with functions accordingly!
 function GI.set_state!(g::GameEnv, state)
-    g.board = state.board
-    g.curplayer = state.curplayer
-    g.last_direction = state.last_direction
-    g.last_positions = state.last_positions
-    g.extended_capture = state.extended_capture
+    g.board = copy(state.board)
+    g.current_player = copy(state.curplayer)
+    g.last_direction = copy(state.last_direction)
+    g.last_positions = copy(state.last_positions)
+    g.extended_capture = copy(state.extended_capture)
+    g.current_position = deepcopy(state.current_position)
     g.white_pieces = count(==(WHITE), g.board)
     g.black_pieces = count(==(BLACK), g.board)
-    update_actions_mask!(g)
+    if g.extended_capture
+        update_actions_mask_extended_capture!(g)
+    else
+        update_actions_mask!(g)
+    end
 end
 
 function GI.current_state(g::GameEnv)
-    return (board=g.board, 
-            curplayer=g.curplayer, 
-            extended_capture=g.extended_capture, 
-            last_positions=g.last_positions, 
-            last_direction=g.last_direction
-        )
+    val = (board=copy(g.board), 
+        curplayer=copy(g.current_player), 
+        extended_capture=copy(g.extended_capture), 
+        last_positions=copy(g.last_positions), 
+        last_direction=copy(g.last_direction),
+        current_position=deepcopy(g.current_position)
+        # ,
+        # id=rand(Int, 1)
+    )
+    # println("current state: $val")
+    return val
 end
 
 #can be simplified with pieces left
@@ -126,11 +137,11 @@ function GI.game_terminated(g::GameEnv)
 end
 
 function GI.white_playing(g::GameEnv)
-    return g.curplayer == WHITE
+    return g.current_player == WHITE
 end
 
 function GI.actions_mask(g::GameEnv)
-    print_possible_action_strings(g.spec, g)
+    # print_state_information(g)
     return g.action_mask
 end
 
@@ -147,13 +158,15 @@ function GI.play!(g::GameEnv, action::Int)
 
         g.extended_capture = true       
         g.last_direction = determine_direction(x0, y0, x1, y1)
-        if isnothing(g.last_positions)
-            g.last_positions = SVector{1, Tuple}(x0, y0)
-        else
-            g.last_positions = push(g.last_positions, (x0, y0))
-        end
+        push!(g.last_positions, (x0, y0))
+        g.current_position = (x1, y1)
+        # if isnothing(g.last_positions)
+        #     g.last_positions = SVector{1, Tuple}(x0, y0)
+        # else
+        #     g.last_positions = push(g.last_positions, (x0, y0))
+        # end
         
-        found_capture = update_actions_mask_extended_capture!(g, x1, y1)
+        found_capture = update_actions_mask_extended_capture!(g)
         
         if !found_capture
             swap_player(g)
@@ -167,15 +180,22 @@ function GI.play!(g::GameEnv, action::Int)
 end
 
 function GI.white_reward(g::GameEnv)
-    reward = Float64(g.white_pieces - g.black_pieces)
+    if GI.game_terminated(g)
+        return g.white_pieces > 0 ? 1 : -1
+    else
+        return 0
+    end
+end
+
+function white_heuristic_value(g::GameEnv)
     return Float64(g.white_pieces - g.black_pieces)
 end
 
 function GI.heuristic_value(g::GameEnv)
-    if g.curplayer == WHITE
-        return GI.white_reward(g)
+    if g.current_player == WHITE
+        return white_heuristic_value(g)
     else
-        return -GI.white_reward(g)
+        return -white_heuristic_value(g)
     end
 end
 
@@ -191,7 +211,7 @@ function GI.render(g::GameEnv)
     xLength = NUM_COLS * 02 - 01
     yLength = NUM_ROWS * 02 - 01
 
-    player = g.curplayer == WHITE ? 'W' : 'B'
+    player = g.current_player == WHITE ? 'W' : 'B'
 
     if size == small
         println(buffer, player * " a   b   c")
@@ -289,23 +309,26 @@ function apply_action(g::GameEnv, x0::Int, y0::Int, x1::Int, y1::Int, type::Acti
     if type == approach
         dirX = x1 - x0
         dirY = y1 - y0
-        capture(g, x1 + dirX, y1 + dirY, dirX, dirY, other(g.curplayer))
+        capture(g, x1 + dirX, y1 + dirY, dirX, dirY, other(g.current_player))
     elseif type == withdrawal
         dirX = x0 - x1
         dirY = y0 - y1
-        capture(g, x1 + 02 * dirX, y1 + 02 * dirY, dirX, dirY, other(g.curplayer))
+        capture(g, x1 + 02 * dirX, y1 + 02 * dirY, dirX, dirY, other(g.current_player))
     end
     # g.board[cord_to_pos(x0, y0)] = 0
     # g.board[cord_to_pos(x1, y1)] = g.curplayer
     g.board = setindex(g.board, EMPTY, cord_to_pos(x0, y0))
-    g.board = setindex(g.board, g.curplayer, cord_to_pos(x1, y1))
+    g.board = setindex(g.board, g.current_player, cord_to_pos(x1, y1))
 end
 
 function swap_player(g::GameEnv)
-    g.curplayer = other(g.curplayer)
+    g.current_player = other(g.current_player)
     g.extended_capture = false
-    g.last_positions = nothing
+    # print("last positions before reset: $(g.last_positions), ")
+    g.last_positions = []
+    # println("last positions after reset: $(g.last_positions)")
     g.last_direction = 0
+    g.current_position = (0, 0)
     update_actions_mask!(g)
 end
 
@@ -463,7 +486,7 @@ function update_actions_mask!(g::GameEnv)
     found_capture = false
     paika_moves = Vector{Tuple}()
 
-    player = g.curplayer
+    player = g.current_player
     opponent = other(player)
     
     for x = UnitRange(1, NUM_COLS), y = UnitRange(1, NUM_ROWS)
@@ -486,14 +509,14 @@ function update_actions_mask!(g::GameEnv)
     return found_capture
 end
 
-function update_actions_mask_extended_capture!(g::GameEnv, x::Int, y::Int)
+function update_actions_mask_extended_capture!(g::GameEnv)
     g.action_mask = falses(NUM_ACTIONS)
-    opponent = other(g.curplayer)
+    opponent = other(g.current_player)
     found_capture = false
 
-    for (x1, y1, d) in get_empty_neighbours(x, y, g.board)
+    for (x1, y1, d) in get_empty_neighbours(g.current_position[1], g.current_position[2], g.board)
         if d != g.last_direction && !((x1, y1) ∈ g.last_positions)
-            found_capture |= update_action_mask_for_neighbour!(g, x, y, x1, y1, d, opponent)
+            found_capture |= update_action_mask_for_neighbour!(g, g.current_position[1], g.current_position[2], x1, y1, d, opponent)
         end
     end
 
@@ -601,16 +624,21 @@ function opponent_in_direction(x::Int, y::Int, d::Int, opponent::Int, board::Boa
     end
 end
 
-function print_possible_action_strings(spec::GameSpec, g::GameEnv)
+function print_state_information(g::GameEnv)
+    println("state: $(GI.current_state(g))")
+    print_possible_action_strings(g)
+end
+
+function print_possible_action_strings(g::GameEnv)
     print("possible actions: ")
-    for action in GI.actions(spec)[g.action_mask]
-        print(GI.action_string(spec, action) * " ($action), ")
+    for action in GI.actions(g.spec)[g.action_mask]
+        print(GI.action_string(g.spec, action) * " ($action), ")
     end
     println()
 end
 
-function print_possible_action(spec::GameSpec, g::GameEnv)
-    GI.actions(spec)[g.action_mask]
+function print_possible_action(g::GameEnv)
+    GI.actions(g.spec)[g.action_mask]
 end
 
 ####################
@@ -623,8 +651,7 @@ function run_test()
     while !GI.game_terminated(env)
         println(GI.render(env))
         println("its player " * (env.curplayer == WHITE ? " white's " : " black's ") * "turn!")
-        println("possible moves are: ")
-        print_possible_action_strings(spec, env)
+        print_possible_action_strings(env)
         possible_actions = GI.actions(spec)[env.action_mask]
         GI.play!(env, rand(possible_actions))
         # input = parse(Int, readline())
