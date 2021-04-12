@@ -13,13 +13,15 @@ const PIECES_PER_PLAYER = Int(floor(NUM_CELLS/2))
 
 const NUM_ACTIONS = NUM_CELLS * 8 * 3 + 1
 
-const Player = Int
+const Player = UInt8
 const WHITE = 1
 const BLACK = 2
 
-other(p::Player) = 3 - p
+other(p::Player) = 0x03 - p
 
-const Cell = Int
+const Cell = UInt8
+const Action = UInt16
+const Coord = UInt8
 const EMPTY = 0
 
 const Board = SVector{NUM_CELLS, Cell}
@@ -53,7 +55,7 @@ const INITIAL_STATE = (board= size == small ? INITIAL_BOARD_3x3 : size == medium
 #######################################
 
 struct GameSpec <: GI.AbstractGameSpec 
-    possible_actions :: Array{Int}
+    possible_actions :: Array{Action}
     GameSpec() = new(calc_possible_actions())
 end
 
@@ -102,10 +104,10 @@ end
 
 # TODO: Update with functions accordingly!
 function GI.set_state!(g::GameEnv, state)
-    g.board = copy(state.board)
+    g.board = state.board
     g.current_player = state.current_player
     g.last_direction = state.last_direction
-    g.last_positions = copy(state.last_positions)
+    g.last_positions = copy(state.last_positions) #this copy is necessary
     g.extended_capture = state.extended_capture
     g.current_position = (state.current_position[1], state.current_position[2])
     g.white_pieces = count(==(WHITE), g.board)
@@ -118,17 +120,14 @@ function GI.set_state!(g::GameEnv, state)
 end
 
 function GI.current_state(g::GameEnv)
-    val = (board=copy(g.board), 
-        current_player=copy(g.current_player), 
-        extended_capture=copy(g.extended_capture), 
+    state_copy = (board=copy(g.board), 
+        current_player=g.current_player, 
+        extended_capture=g.extended_capture, 
         last_positions=copy(g.last_positions), 
-        last_direction=copy(g.last_direction),
-        current_position=deepcopy(g.current_position)
-        # ,
-        # id=rand(Int, 1)
+        last_direction=g.last_direction,
+        current_position=(g.current_position[1], g.current_position[2])
     )
-    # println("current state: $val")
-    return val
+    return state_copy
 end
 
 #can be simplified with pieces left
@@ -145,8 +144,8 @@ function GI.actions_mask(g::GameEnv)
     return g.action_mask
 end
 
-function GI.play!(g::GameEnv, action::Int)
-    x0, y0, x1, y1, type = decode_action_value(action)
+function GI.play!(g::GameEnv, action::Action)
+    x0, y0, x1, y1, type = decode_action(action)
     if type == pass
         swap_player(g)
     elseif type == paika
@@ -236,8 +235,8 @@ function GI.render(g::GameEnv)
     return String(take!(buffer))
 end
 
-function GI.action_string(::GameSpec, action::Int)
-    x0, y0, x1, y1, type = decode_action_value(action)
+function GI.action_string(::GameSpec, action::Action)
+    x0, y0, x1, y1, type = decode_action(action)
     if type == pass
         return "pass"
     else
@@ -250,7 +249,7 @@ function GI.parse_action(::GameSpec, str::String)
         return 0
     else
         parts = collect(Char, str)
-        return action_value(Int(parts[1] - 96), parse(Int, parts[2]), Int(parts[3] - 96), parse(Int, parts[4]), parts[5] == 'P' ? paika : parts[5] == 'A' ? approach : withdrawal)
+        return encode_action(Int(parts[1] - 96), parse(Int, parts[2]), Int(parts[3] - 96), parse(Int, parts[4]), parts[5] == 'P' ? paika : parts[5] == 'A' ? approach : withdrawal)
     end
 end
 
@@ -323,7 +322,7 @@ function swap_player(g::GameEnv)
     update_actions_mask!(g)
 end
 
-function capture(g::GameEnv, x, y, dirX, dirY, opponent::Int)
+function capture(g::GameEnv, x, y, dirX, dirY, opponent::Player)
     # g.board[cord_to_pos(x, y)] = 0
     g.board = setindex(g.board, 0, cord_to_pos(x, y))
     if opponent == WHITE
@@ -350,12 +349,12 @@ function flip_colors(board::Board)
 end
 
 function calc_possible_actions()    
-    actions = Array{Int}(undef, NUM_ACTIONS)
+    actions = Array{Action}(undef, NUM_ACTIONS)
     for position = UnitRange(1, NUM_CELLS), direction = UnitRange(1, 8)
         index = action_index(position, direction)
-        actions[index + Int(paika)] = action_value(position, direction, paika)
-        actions[index + Int(approach)] = action_value(position, direction, approach)
-        actions[index + Int(withdrawal)] = action_value(position, direction, withdrawal)
+        actions[index + Int(paika)] = encode_action(position, direction, paika)
+        actions[index + Int(approach)] = encode_action(position, direction, approach)
+        actions[index + Int(withdrawal)] = encode_action(position, direction, withdrawal)
     end
     actions[NUM_ACTIONS] = 0
     return actions
@@ -370,16 +369,16 @@ function action_index(x::Int, y::Int, direction::Int)
     return action_index(cord_to_pos(x, y), direction)
 end
 
-function action_value(position::Int, direction::Int, type::ActionType)
+function encode_action(position::Int, direction::Int, type::ActionType)
     # println("position: $position, direction: $direction, tpye: $type")
     x0, y0 = pos_to_cord(position)
     x1 = Int
     y1 = Int
     (x1, y1) = new_coords(x0, y0, direction)
-    return action_value(x0, y0, x1, y1, type)
+    return encode_action(x0, y0, x1, y1, type)
 end
 
-function action_value(x0::Int, y0::Int, x1::Int, y1::Int, type::ActionType)    
+function encode_action(x0::Int, y0::Int, x1::Int, y1::Int, type::ActionType)    
     # println("from (x, y): ($x0, $y0), to: ($x1, $y1), type: $type")
     
     # x0 uses bit 16 to 13
@@ -387,11 +386,11 @@ function action_value(x0::Int, y0::Int, x1::Int, y1::Int, type::ActionType)
     # x1 uses bit 9 to 6
     # y1 uses bit 5 to 3
     # type uses bit 2 to 1
-    return (x0 << 12) + (y0 << 9) + (x1 << 5) + (y1 << 2) + Int(type)
+    return convert(Action, (x0 << 12) + (y0 << 9) + (x1 << 5) + (y1 << 2) + UInt8(type))
 end
 
-function decode_action_value(action::Int)
-    if action == 0
+function decode_action(action::Action)
+    if action == 0x0000
         return 0, 0, 0, 0, pass
     end
     type = ActionType(action & 3)
@@ -516,7 +515,7 @@ function update_actions_mask_extended_capture!(g::GameEnv)
     return found_capture
 end
 
-function update_action_mask_for_neighbour!(g::GameEnv, x0::Int, y0::Int, x1::Int, y1::Int, d::Int, opponent::Int)
+function update_action_mask_for_neighbour!(g::GameEnv, x0::Int, y0::Int, x1::Int, y1::Int, d::Int, opponent::Player)
     found_capture = false;
     if opponent_in_direction(x1, y1, d, opponent, g.board)
         found_capture = true;
@@ -605,7 +604,7 @@ function is_in_board_space(x::Int, y::Int)
     return x > 0 && x <= NUM_COLS && y > 0 && y <= NUM_ROWS
 end
 
-function opponent_in_direction(x::Int, y::Int, d::Int, opponent::Int, board::Board)
+function opponent_in_direction(x::Int, y::Int, d::Int, opponent::Player, board::Board)
     x1, y1 = new_coords(x, y, d)
     
     if is_in_board_space(x1, y1)
@@ -640,9 +639,9 @@ function run_test()
     spec = GameSpec()
     env = GI.init(spec)
     while !GI.game_terminated(env)
-        println(GI.render(env))
-        println("its player $(env.current_player == WHITE ? " white's " : " black's ") turn!")
-        print_possible_action_strings(env)
+        # println(GI.render(env))
+        # println("its player $(env.current_player == WHITE ? " white's " : " black's ") turn!")
+        # print_possible_action_strings(env)
         possible_actions = GI.actions(spec)[env.action_mask]
         GI.play!(env, rand(possible_actions))
         # input = parse(Int, readline())
@@ -652,4 +651,3 @@ function run_test()
 end
 
 # spec, env = run_test()
-# test_game(GameSpec())
