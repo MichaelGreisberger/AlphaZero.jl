@@ -4,27 +4,24 @@ using StaticArrays
 @enum ActionType paika=0 approach=1 withdrawal=2 pass=3
 @enum BoardSize small medium large
 
-const size = large
-const NUM_COLS = size == small ? 3 : size == medium ? 5 : 9
-const NUM_ROWS = size == small ? 3 : 5
-
-const NUM_CELLS = NUM_COLS * NUM_ROWS
-const PIECES_PER_PLAYER = Int(floor(NUM_CELLS/2))
-
-const NUM_ACTIONS = NUM_CELLS * 8 * 3 + 1
-
+### TYPES
 const Player = UInt8
-const WHITE = 1
-const BLACK = 2
-
-other(p::Player) = 0x03 - p
-
 const Cell = UInt8
 const Action = UInt16
 const Coord = UInt8
-const EMPTY = 0
-
 const Board = SVector{NUM_CELLS, Cell}
+
+### CONSTANTS
+const SIZE = large
+const NUM_COLS = SIZE == small ? 3 : SIZE == medium ? 5 : 9
+const NUM_ROWS = SIZE == small ? 3 : 5
+const NUM_CELLS = NUM_COLS * NUM_ROWS
+const NUM_ACTIONS = NUM_CELLS * 8 * 3 + 1
+const PIECES_PER_PLAYER = Int(floor(NUM_CELLS/2))
+
+const WHITE = 1
+const BLACK = 2
+const EMPTY = 0
 
 const INITIAL_BOARD_9x5 = SVector{45, Cell}(
     BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,
@@ -48,7 +45,7 @@ const INITIAL_BOARD_3x3 = SVector{9, Cell}(
     WHITE,WHITE,WHITE
 )
 
-const INITIAL_STATE = (board= size == small ? INITIAL_BOARD_3x3 : size == medium ? INITIAL_BOARD_5x5 : INITIAL_BOARD_9x5, current_player=WHITE)
+const INITIAL_STATE = (board= SIZE == small ? INITIAL_BOARD_3x3 : SIZE == medium ? INITIAL_BOARD_5x5 : INITIAL_BOARD_9x5, current_player=WHITE)
 
 #######################################
 ### IMPLEMENTATION OF GAMEINTERFACE ###
@@ -73,11 +70,11 @@ mutable struct GameEnv <: GI.AbstractGameEnv
 end
 
 function GI.init(spec::GameSpec)
-  board = copy(INITIAL_STATE.board)
-  current_player = INITIAL_STATE.current_player
-  env = GameEnv(spec, board, current_player, PIECES_PER_PLAYER, PIECES_PER_PLAYER, [], false, (0, 0), [], 0)
-  update_actions_mask!(env)
-  return env
+    board = copy(INITIAL_STATE.board)
+    current_player = INITIAL_STATE.current_player
+    env = GameEnv(spec, board, current_player, PIECES_PER_PLAYER, PIECES_PER_PLAYER, [], false, (0, 0), [], 0)
+    update_actions_mask!(env)
+    return env
 end
 
 GI.spec(g::GameEnv) = g.spec
@@ -203,9 +200,9 @@ function GI.render(g::GameEnv)
 
     player = g.current_player == WHITE ? 'W' : 'B'
 
-    if size == small
+    if SIZE == small
         println(buffer, player * " a   b   c")
-    elseif size == medium
+    elseif SIZE == medium
         println(buffer, player * " a   b   c   d   e")
     else
         println(buffer, player * " a   b   c   d   e   f   g   h   i")
@@ -260,7 +257,7 @@ function GI.read_state(::GameSpec)
         i = 1
         input = lowercase(readline())
         player = input[1] == 'w' ? WHITE : input[1] == 'b' ? BLACK : error("First character must either be 'W' or 'B' to identify the current player")
-        linecount = size == small ? 6 : 10
+        linecount = SIZE == small ? 6 : 10
         line = 1
 
         while line < linecount
@@ -294,6 +291,7 @@ end
 ### HELPER METHODS ###
 ######################
 
+other(p::Player) = 0x03 - p
 
 function apply_action(g::GameEnv, x0::Int, y0::Int, x1::Int, y1::Int, type::ActionType)
     if type == approach
