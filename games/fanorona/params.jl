@@ -75,7 +75,7 @@ benchmark = [
     benchmark_sim),
   Benchmark.Duel(
     Benchmark.NetworkOnly(),
-    Benchmark.MinMaxTS(depth=6, amplify_rewards=true, τ=1.),
+    Benchmark.MinMaxTS(depth=3, amplify_rewards=true, τ=1.),
     benchmark_sim)]
 
 experiment = Experiment(

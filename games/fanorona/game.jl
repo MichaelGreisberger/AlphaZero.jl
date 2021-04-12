@@ -46,7 +46,7 @@ const INITIAL_BOARD_3x3 = SVector{9, Cell}(
     WHITE,WHITE,WHITE
 )
 
-const INITIAL_STATE = (board= size == small ? INITIAL_BOARD_3x3 : size == medium ? INITIAL_BOARD_5x5 : INITIAL_BOARD_9x5, curplayer=WHITE)
+const INITIAL_STATE = (board= size == small ? INITIAL_BOARD_3x3 : size == medium ? INITIAL_BOARD_5x5 : INITIAL_BOARD_9x5, current_player=WHITE)
 
 #######################################
 ### IMPLEMENTATION OF GAMEINTERFACE ###
@@ -72,8 +72,8 @@ end
 
 function GI.init(spec::GameSpec)
   board = copy(INITIAL_STATE.board)
-  curplayer = INITIAL_STATE.curplayer
-  env = GameEnv(spec, board, curplayer, PIECES_PER_PLAYER, PIECES_PER_PLAYER, [], false, (0, 0), [], 0)
+  current_player = INITIAL_STATE.current_player
+  env = GameEnv(spec, board, current_player, PIECES_PER_PLAYER, PIECES_PER_PLAYER, [], false, (0, 0), [], 0)
   update_actions_mask!(env)
   return env
 end
@@ -89,7 +89,7 @@ GI.two_players(::GameSpec) = true
 GI.actions(spec::GameSpec) = spec.possible_actions
 
 function GI.vectorize_state(::GameSpec, state)
-    board = state.curplayer == WHITE ? state.board : flip_colors(state.board)
+    board = state.current_player == WHITE ? state.board : flip_colors(state.board)
     return Float32[
         board[position]
         for position in 1:NUM_CELLS
@@ -103,11 +103,11 @@ end
 # TODO: Update with functions accordingly!
 function GI.set_state!(g::GameEnv, state)
     g.board = copy(state.board)
-    g.current_player = copy(state.curplayer)
-    g.last_direction = copy(state.last_direction)
+    g.current_player = state.current_player
+    g.last_direction = state.last_direction
     g.last_positions = copy(state.last_positions)
-    g.extended_capture = copy(state.extended_capture)
-    g.current_position = deepcopy(state.current_position)
+    g.extended_capture = state.extended_capture
+    g.current_position = (state.current_position[1], state.current_position[2])
     g.white_pieces = count(==(WHITE), g.board)
     g.black_pieces = count(==(BLACK), g.board)
     if g.extended_capture
@@ -119,7 +119,7 @@ end
 
 function GI.current_state(g::GameEnv)
     val = (board=copy(g.board), 
-        curplayer=copy(g.current_player), 
+        current_player=copy(g.current_player), 
         extended_capture=copy(g.extended_capture), 
         last_positions=copy(g.last_positions), 
         last_direction=copy(g.last_direction),
@@ -146,7 +146,6 @@ function GI.actions_mask(g::GameEnv)
 end
 
 function GI.play!(g::GameEnv, action::Int)
-    # println("$(GI.action_string(GI.spec(g), action)) ($action)")
     x0, y0, x1, y1, type = decode_action_value(action)
     if type == pass
         swap_player(g)
@@ -160,12 +159,7 @@ function GI.play!(g::GameEnv, action::Int)
         g.last_direction = determine_direction(x0, y0, x1, y1)
         push!(g.last_positions, (x0, y0))
         g.current_position = (x1, y1)
-        # if isnothing(g.last_positions)
-        #     g.last_positions = SVector{1, Tuple}(x0, y0)
-        # else
-        #     g.last_positions = push(g.last_positions, (x0, y0))
-        # end
-        
+
         found_capture = update_actions_mask_extended_capture!(g)
         
         if !found_capture
@@ -173,15 +167,12 @@ function GI.play!(g::GameEnv, action::Int)
         end
     end
     # println(GI.render(g))
-    # terminated = GI.game_terminated(g)
-    # black = g.black_pieces
-    # white = g.white_pieces
-    # println("game terminated? $terminated, black $black, white $white")
+    # print_possible_action_strings(g)
 end
 
 function GI.white_reward(g::GameEnv)
     if GI.game_terminated(g)
-        return g.white_pieces > 0 ? 1 : -1
+        return g.white_pieces > 0.0 ? 1.0 : -1.0
     else
         return 0
     end
@@ -316,7 +307,7 @@ function apply_action(g::GameEnv, x0::Int, y0::Int, x1::Int, y1::Int, type::Acti
         capture(g, x1 + 02 * dirX, y1 + 02 * dirY, dirX, dirY, other(g.current_player))
     end
     # g.board[cord_to_pos(x0, y0)] = 0
-    # g.board[cord_to_pos(x1, y1)] = g.curplayer
+    # g.board[cord_to_pos(x1, y1)] = g.current_player
     g.board = setindex(g.board, EMPTY, cord_to_pos(x0, y0))
     g.board = setindex(g.board, g.current_player, cord_to_pos(x1, y1))
 end
@@ -650,7 +641,7 @@ function run_test()
     env = GI.init(spec)
     while !GI.game_terminated(env)
         println(GI.render(env))
-        println("its player " * (env.curplayer == WHITE ? " white's " : " black's ") * "turn!")
+        println("its player $(env.current_player == WHITE ? " white's " : " black's ") turn!")
         print_possible_action_strings(env)
         possible_actions = GI.actions(spec)[env.action_mask]
         GI.play!(env, rand(possible_actions))
