@@ -4,17 +4,10 @@ using StaticArrays
 @enum ActionType paika=0 approach=1 withdrawal=2 pass=3
 @enum BoardSize small medium large
 
-### TYPES
-const Player = UInt8
-const Cell = UInt8
-const Action = UInt16
-const Coord = UInt8
-const Board = SVector{NUM_CELLS, Cell}
-
 ### CONSTANTS
 const SIZE = large
-const NUM_COLS = SIZE == small ? 3 : SIZE == medium ? 5 : 9
-const NUM_ROWS = SIZE == small ? 3 : 5
+const NUM_COLS = SIZE == small ? 0x03 : SIZE == medium ? 0x05 : 0x09
+const NUM_ROWS = SIZE == small ? 0x03 : 0x05
 const NUM_CELLS = NUM_COLS * NUM_ROWS
 const NUM_ACTIONS = NUM_CELLS * 8 * 3 + 1
 const PIECES_PER_PLAYER = Int(floor(NUM_CELLS/2))
@@ -23,7 +16,16 @@ const WHITE = 1
 const BLACK = 2
 const EMPTY = 0
 
-const INITIAL_BOARD_9x5 = SVector{45, Cell}(
+### TYPES
+const Player = UInt8
+const Cell = UInt8
+const Coord = UInt8
+const Direction = UInt8
+const Action = Tuple{ActionType, Vararg{UInt8, 5}}
+const Board = MVector{Int(NUM_CELLS), Cell}
+
+### DIFFERENT INITIAL BOARDS
+const INITIAL_BOARD_9x5 = MVector{45, Cell}(
     BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,
     BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,BLACK,
     BLACK,WHITE,BLACK,WHITE,EMPTY,BLACK,WHITE,BLACK,WHITE,
@@ -31,7 +33,7 @@ const INITIAL_BOARD_9x5 = SVector{45, Cell}(
     WHITE,WHITE,WHITE,WHITE,WHITE,WHITE,WHITE,WHITE,WHITE
 )
 
-const INITIAL_BOARD_5x5 = SVector{25, Cell}(
+const INITIAL_BOARD_5x5 = MVector{25, Cell}(
     BLACK,BLACK,BLACK,BLACK,BLACK,
     BLACK,BLACK,BLACK,BLACK,BLACK,
     BLACK,WHITE,EMPTY,BLACK,WHITE,
@@ -39,7 +41,7 @@ const INITIAL_BOARD_5x5 = SVector{25, Cell}(
     WHITE,WHITE,WHITE,WHITE,WHITE
 )
 
-const INITIAL_BOARD_3x3 = SVector{9, Cell}(
+const INITIAL_BOARD_3x3 = MVector{9, Cell}(
     BLACK,BLACK,BLACK,
     BLACK,EMPTY,WHITE,
     WHITE,WHITE,WHITE
@@ -72,7 +74,7 @@ end
 function GI.init(spec::GameSpec)
     board = copy(INITIAL_STATE.board)
     current_player = INITIAL_STATE.current_player
-    env = GameEnv(spec, board, current_player, PIECES_PER_PLAYER, PIECES_PER_PLAYER, [], false, (0, 0), [], 0)
+    env = GameEnv(spec, board, current_player, PIECES_PER_PLAYER, PIECES_PER_PLAYER, [], false, (0x0, 0x0), [], 0)
     update_actions_mask!(env)
     return env
 end
@@ -101,7 +103,7 @@ end
 
 # TODO: Update with functions accordingly!
 function GI.set_state!(g::GameEnv, state)
-    g.board = state.board
+    g.board = copy(state.board)
     g.current_player = state.current_player
     g.last_direction = state.last_direction
     g.last_positions = copy(state.last_positions) #this copy is necessary
@@ -142,7 +144,7 @@ function GI.actions_mask(g::GameEnv)
 end
 
 function GI.play!(g::GameEnv, action::Action)
-    x0, y0, x1, y1, type = decode_action(action)
+    type, x0, y0, x1, y1, d = action[1], action[2], action[3], action[4], action[5], action[6]
     if type == pass
         swap_player(g)
     elseif type == paika
@@ -152,7 +154,7 @@ function GI.play!(g::GameEnv, action::Action)
         apply_action(g, x0, y0, x1, y1, type)
 
         g.extended_capture = true       
-        g.last_direction = determine_direction(x0, y0, x1, y1)
+        g.last_direction = d #determine_direction(x0, y0, x1, y1)
         push!(g.last_positions, (x0, y0))
         g.current_position = (x1, y1)
 
@@ -208,12 +210,12 @@ function GI.render(g::GameEnv)
         println(buffer, player * " a   b   c   d   e   f   g   h   i")
     end
 
-    for y in UnitRange(0001, yLength)
+    for y in UnitRange(1, yLength)
         print(buffer, y % 2 != 0 ? string(ceil(Int, y / 2)) * " " : "  ")
-        for x in UnitRange(0001, xLength)
+        for x in UnitRange(1, xLength)
             if x % 2 != 0
                 if y % 2 != 0
-                    pos = cord_to_pos(floor(Int, x/2 + 1), floor(Int, y/2 + 1))
+                    pos = cord_to_pos(floor(UInt8, x/2 + 1), floor(UInt8, y/2 + 1))
                     val = board[pos]
                     print(buffer, val == 0 ? " " : val == 1 ? "W" : "B")
                 else
@@ -233,7 +235,7 @@ function GI.render(g::GameEnv)
 end
 
 function GI.action_string(::GameSpec, action::Action)
-    x0, y0, x1, y1, type = decode_action(action)
+    type, x0, y0, x1, y1 = action[1], action[2], action[3], action[4], action[5]
     if type == pass
         return "pass"
     else
@@ -243,10 +245,15 @@ end
 
 function GI.parse_action(::GameSpec, str::String)
     if str == "pass"
-        return 0
+        return (pass, 0x00, 0x00, 0x00, 0x00, 0x00)
     else
         parts = collect(Char, str)
-        return encode_action(Int(parts[1] - 96), parse(Int, parts[2]), Int(parts[3] - 96), parse(Int, parts[4]), parts[5] == 'P' ? paika : parts[5] == 'A' ? approach : withdrawal)
+        x0 = Coord(parts[1] - 96)
+        y0 = Coord(parse(Int, parts[2]))
+        x1 = Coord(parts[3] - 96)
+        y1 = Coord(parse(Int, parts[4]))
+        d = determine_direction(x0, y0, x1, y1)
+        return (x0, y0, x1, y1, d, paika : parts[5] == 'A' ? approach : withdrawal)
     end
 end
 
@@ -293,7 +300,7 @@ end
 
 other(p::Player) = 0x03 - p
 
-function apply_action(g::GameEnv, x0::Int, y0::Int, x1::Int, y1::Int, type::ActionType)
+function apply_action(g::GameEnv, x0::Coord, y0::Coord, x1::Coord, y1::Coord, type::ActionType)
     if type == approach
         dirX = x1 - x0
         dirY = y1 - y0
@@ -301,12 +308,14 @@ function apply_action(g::GameEnv, x0::Int, y0::Int, x1::Int, y1::Int, type::Acti
     elseif type == withdrawal
         dirX = x0 - x1
         dirY = y0 - y1
-        capture(g, x1 + 02 * dirX, y1 + 02 * dirY, dirX, dirY, other(g.current_player))
+        capture(g, x1 + 0x02 * dirX, y1 + 0x02 * dirY, dirX, dirY, other(g.current_player))
     end
     # g.board[cord_to_pos(x0, y0)] = 0
     # g.board[cord_to_pos(x1, y1)] = g.current_player
-    g.board = setindex(g.board, EMPTY, cord_to_pos(x0, y0))
-    g.board = setindex(g.board, g.current_player, cord_to_pos(x1, y1))
+    # g.board = setindex(g.board, EMPTY, cord_to_pos(x0, y0))
+    # g.board = setindex(g.board, g.current_player, cord_to_pos(x1, y1))
+    setindex!(g.board, EMPTY, cord_to_pos(x0, y0))
+    setindex!(g.board, g.current_player, cord_to_pos(x1, y1))
 end
 
 function swap_player(g::GameEnv)
@@ -316,13 +325,14 @@ function swap_player(g::GameEnv)
     g.last_positions = []
     # println("last positions after reset: $(g.last_positions)")
     g.last_direction = 0
-    g.current_position = (0, 0)
+    g.current_position = (0x0, 0x0)
     update_actions_mask!(g)
 end
 
 function capture(g::GameEnv, x, y, dirX, dirY, opponent::Player)
     # g.board[cord_to_pos(x, y)] = 0
-    g.board = setindex(g.board, 0, cord_to_pos(x, y))
+    # g.board = setindex(g.board, 0x00, cord_to_pos(x, y))
+    setindex!(g.board, 0x00, cord_to_pos(x, y))
     if opponent == WHITE
         g.white_pieces -= 1
     else
@@ -348,124 +358,133 @@ end
 
 function calc_possible_actions()    
     actions = Array{Action}(undef, NUM_ACTIONS)
-    for position = UnitRange(1, NUM_CELLS), direction = UnitRange(1, 8)
+    for position in 0x01:NUM_CELLS, direction in 0x01:0x08
         index = action_index(position, direction)
-        actions[index + Int(paika)] = encode_action(position, direction, paika)
-        actions[index + Int(approach)] = encode_action(position, direction, approach)
-        actions[index + Int(withdrawal)] = encode_action(position, direction, withdrawal)
+        x0, y0 = pos_to_cord(position)
+        x1, y1 = new_coords(x0, y0, direction)
+        actions[index + UInt8(paika)] = (paika, x0, y0, x1, y1, direction)  #encode_action(position, direction, paika)
+        actions[index + UInt8(approach)] = (approach, x0, y0, x1, y1, direction) #encode_action(position, direction, approach)
+        actions[index + UInt8(withdrawal)] = (withdrawal, x0, y0, x1, y1, direction) #encode_action(position, direction, withdrawal)
     end
-    actions[NUM_ACTIONS] = 0
+    actions[NUM_ACTIONS] = (pass, 0x00, 0x00, 0x00, 0x00, 0x00)
     return actions
 end
 
-function action_index(position::Int, direction::Int)
+function action_index_adv(position::UInt8, direction::Direction)
+    index = 0
+    
+end
+
+function action_index(position::UInt8, direction::Direction)
     # 24 possible moves per position, 3 possible moves per direction
     return (position - 1) * 24 + 1 + (direction - 1) * 3
 end 
 
-function action_index(x::Int, y::Int, direction::Int)
+function action_index(x::Coord, y::Coord, direction::Direction)
     return action_index(cord_to_pos(x, y), direction)
 end
 
-function encode_action(position::Int, direction::Int, type::ActionType)
-    # println("position: $position, direction: $direction, tpye: $type")
-    x0, y0 = pos_to_cord(position)
-    x1 = Int
-    y1 = Int
-    (x1, y1) = new_coords(x0, y0, direction)
-    return encode_action(x0, y0, x1, y1, type)
-end
+# function encode_action(position::Int, direction::Int, type::ActionType)
+#     # println("position: $position, direction: $direction, tpye: $type")
+#     x0, y0 = pos_to_cord(position)
+#     x1 = Int
+#     y1 = Int
+#     (x1, y1) = new_coords(x0, y0, direction)
+#     return encode_action(x0, y0, x1, y1, type)
+# end
 
-function encode_action(x0::Int, y0::Int, x1::Int, y1::Int, type::ActionType)    
-    # println("from (x, y): ($x0, $y0), to: ($x1, $y1), type: $type")
+# function encode_action(x0::Int, y0::Int, x1::Int, y1::Int, type::ActionType)    
+#     # println("from (x, y): ($x0, $y0), to: ($x1, $y1), type: $type")
     
-    # x0 uses bit 16 to 13
-    # y0 uses bit 12 to 10
-    # x1 uses bit 9 to 6
-    # y1 uses bit 5 to 3
-    # type uses bit 2 to 1
-    return convert(Action, (x0 << 12) + (y0 << 9) + (x1 << 5) + (y1 << 2) + UInt8(type))
-end
+#     # x0 uses bit 16 to 13
+#     # y0 uses bit 12 to 10
+#     # x1 uses bit 9 to 6
+#     # y1 uses bit 5 to 3
+#     # type uses bit 2 to 1
+#     return convert(Action, (x0 << 12) + (y0 << 9) + (x1 << 5) + (y1 << 2) + UInt8(type))
+# end
 
-function decode_action(action::Action)
-    if action == 0x0000
-        return 0, 0, 0, 0, pass
-    end
-    type = ActionType(action & 3)
-    y1 = (action >> 2) & 7
-    x1 = (action >> 5) & 15
-    y0 = (action >> 9) & 7
-    x0 = (action >> 12) & 15
-    return x0, y0, x1, y1, type
-end
+# function decode_action(action::Action)
+#     if action == 0x0000
+#         return 0, 0, 0, 0, pass
+#     end
+#     type = ActionType(action & 3)
+#     y1 = (action >> 2) & 7
+#     x1 = (action >> 5) & 15
+#     y0 = (action >> 9) & 7
+#     x0 = (action >> 12) & 15
+#     return x0, y0, x1, y1, type
+# end
 
-function new_coords(x0::Int, y0::Int, direction::Int)
+function new_coords(x0::Coord, y0::Coord, direction::Direction)
     x1 = Int # destination coordinate x (columns)
     y1 = Int # destination coordinate y (rows)
 
-    if direction == 1
+    if direction == 0x01
         x1 = x0
-        y1 = y0 - 01
-    elseif direction == 2
-        x1 = x0 + 01
-        y1 = y0 - 01
-    elseif direction == 3
-        x1 = x0 + 01
+        y1 = y0 - 0x01
+    elseif direction == 0x02
+        x1 = x0 + 0x01
+        y1 = y0 - 0x01
+    elseif direction == 0x03
+        x1 = x0 + 0x01
         y1 = y0
-    elseif direction == 4
-        x1 = x0 + 01
-        y1 = y0 + 01
-    elseif direction == 5
+    elseif direction == 0x04
+        x1 = x0 + 0x01
+        y1 = y0 + 0x01
+    elseif direction == 0x05
         x1 = x0
-        y1 = y0 + 01
-    elseif direction == 6
-        x1 = x0 - 01
-        y1 = y0 + 01
-    elseif direction == 7
-        x1 = x0 - 01
+        y1 = y0 + 0x01
+    elseif direction == 0x06
+        x1 = x0 - 0x01
+        y1 = y0 + 0x01
+    elseif direction == 0x07
+        x1 = x0 - 0x01
         y1 = y0
+    elseif direction == 0x08
+        x1 = x0 - 0x01
+        y1 = y0 - 0x01
     else
-        x1 = x0 - 01
-        y1 = y0 - 01
+        error("Direction out of bounds (0x01:0x08)")
     end
 
     return (x1, y1)
 end
 
-function determine_direction(x0::Int, y0::Int, x1::Int, y1::Int)
+function determine_direction(x0::Coord, y0::Coord, x1::Coord, y1::Coord)
     if x0 < x1 #+x
         if y0 < y1 #+y
-            return 04
+            return 0x04
         elseif y0 == y1
-            return 03
+            return 0x03
         else
-            return 02
+            return 0x02
         end
     elseif x1 < x0 #-x
         if y0 < y1 #+y
-            return 06
+            return 0x06
         elseif y0 == y1
-            return 07
+            return 0x07
         else
-            return 08
+            return 0x08
         end
     else        
         if y0 < y1 #+y
-            return 05
+            return 0x05
         else
-            return 01
+            return 0x01
         end
     end
 end
 
-function pos_to_cord(position::Int)
-    x = (position - 01) % NUM_COLS + 01 # origin coordinate x (columns)
-    y = Int(ceil(position / NUM_COLS)) # origin coordinate y (rows)
+function pos_to_cord(position::UInt8)
+    x = (position - 0x01) % NUM_COLS + 0x01 # origin coordinate x (columns)
+    y = UInt8(ceil(position / NUM_COLS)) # origin coordinate y (rows)
     return x, y
 end
 
-function cord_to_pos(x::Int, y::Int)
-    return Int((y - 01) * NUM_COLS + x)
+function cord_to_pos(x::Coord, y::Coord)
+    return UInt8((y - 0x01) * NUM_COLS + x)
 end
 
 function update_actions_mask!(g::GameEnv)
@@ -477,7 +496,7 @@ function update_actions_mask!(g::GameEnv)
     player = g.current_player
     opponent = other(player)
     
-    for x = UnitRange(1, NUM_COLS), y = UnitRange(1, NUM_ROWS)
+    for x = UnitRange(0x01, NUM_COLS), y = UnitRange(0x01, NUM_ROWS)
         if g.board[cord_to_pos(x, y)] == player
             for (x1, y1, d) in get_empty_neighbours(x, y, g.board)
                 found_capture |= update_action_mask_for_neighbour!(g, x, y, x1, y1, d, opponent)
@@ -513,7 +532,7 @@ function update_actions_mask_extended_capture!(g::GameEnv)
     return found_capture
 end
 
-function update_action_mask_for_neighbour!(g::GameEnv, x0::Int, y0::Int, x1::Int, y1::Int, d::Int, opponent::Player)
+function update_action_mask_for_neighbour!(g::GameEnv, x0::Coord, y0::Coord, x1::Coord, y1::Coord, d::Direction, opponent::Player)
     found_capture = false;
     if opponent_in_direction(x1, y1, d, opponent, g.board)
         found_capture = true;
@@ -526,11 +545,11 @@ function update_action_mask_for_neighbour!(g::GameEnv, x0::Int, y0::Int, x1::Int
     return found_capture
 end
 
-function opposite_direction(d::Int)
-    return (d + 4) % 8
+function opposite_direction(d::Direction)
+    return (d + 0x03) % 0x08 + 0x01
 end
 
-function get_empty_neighbours(x::Int, y::Int, board::Board)
+function get_empty_neighbours(x::Coord, y::Coord, board::Board)
     empty_neighbours = Vector{Tuple}()
     for (x1, y1, d) in get_surrounding_nodes(x, y) 
         if board[cord_to_pos(x1, y1)] == EMPTY
@@ -540,7 +559,7 @@ function get_empty_neighbours(x::Int, y::Int, board::Board)
     return empty_neighbours
 end
 
-function get_surrounding_nodes(x::Int, y::Int)
+function get_surrounding_nodes(x::Coord, y::Coord)
     if (is_strong_node(x, y))
         return get_eight_neighbours(x, y)
     else
@@ -548,61 +567,61 @@ function get_surrounding_nodes(x::Int, y::Int)
     end
 end
 
-function is_strong_node(x::Int, y::Int)
+function is_strong_node(x::Coord, y::Coord)
     return (x + y * NUM_COLS) % 2 == 0
 end
 
-function get_eight_neighbours(x::Int, y::Int)
+function get_eight_neighbours(x::Coord, y::Coord)
     neighbours = Tuple[]
-    if (is_in_board_space(x, y - 01))
-        push!(neighbours, (x, y - 01, 01))
+    if (is_in_board_space(x, y - 0x01))
+        push!(neighbours, (x, y - 0x01, 0x01))
     end
-    if (is_in_board_space(x + 01, y - 01))
-        push!(neighbours, (x + 01, y - 01, 02))
+    if (is_in_board_space(x + 0x01, y - 0x01))
+        push!(neighbours, (x + 0x01, y - 0x01, 0x02))
     end
-    if (is_in_board_space(x + 01, y))
-        push!(neighbours, (x + 01, y, 03))
+    if (is_in_board_space(x + 0x01, y))
+        push!(neighbours, (x + 0x01, y, 0x03))
     end
-    if (is_in_board_space(x + 01, y + 01))
-        push!(neighbours, (x + 01, y + 01, 04))
+    if (is_in_board_space(x + 0x01, y + 0x01))
+        push!(neighbours, (x + 0x01, y + 0x01, 0x04))
     end
-    if (is_in_board_space(x, y + 01))
-        push!(neighbours, (x, y + 01, 05))
+    if (is_in_board_space(x, y + 0x01))
+        push!(neighbours, (x, y + 0x01, 0x05))
     end
-    if (is_in_board_space(x - 01, y + 01))
-        push!(neighbours, (x - 01, y + 01, 06))
+    if (is_in_board_space(x - 0x01, y + 0x01))
+        push!(neighbours, (x - 0x01, y + 0x01, 0x06))
     end
-    if (is_in_board_space(x - 01, y))
-        push!(neighbours, (x - 01, y, 07))
+    if (is_in_board_space(x - 0x01, y))
+        push!(neighbours, (x - 0x01, y, 0x07))
     end
-    if (is_in_board_space(x - 01, y - 01))
-        push!(neighbours, (x - 01, y - 01, 08))
+    if (is_in_board_space(x - 0x01, y - 0x01))
+        push!(neighbours, (x - 0x01, y - 0x01, 0x08))
     end
     return neighbours
 end
 
-function get_four_neighbours(x::Int, y::Int)
+function get_four_neighbours(x::Coord, y::Coord)
     neighbours = Tuple[]
-    if (is_in_board_space(x, y - 01))
-        push!(neighbours, (x, y - 01, 01))
+    if (is_in_board_space(x, y - 0x01))
+        push!(neighbours, (x, y - 0x01, 0x01))
     end
-    if (is_in_board_space(x + 01, y))
-        push!(neighbours, (x + 01, y, 03))
+    if (is_in_board_space(x + 0x01, y))
+        push!(neighbours, (x + 0x01, y, 0x03))
     end
-    if (is_in_board_space(x, y + 01))
-        push!(neighbours, (x, y + 01, 05))
+    if (is_in_board_space(x, y + 0x01))
+        push!(neighbours, (x, y + 0x01, 0x05))
     end
-    if (is_in_board_space(x - 01, y))
-        push!(neighbours, (x - 01, y, 07))
+    if (is_in_board_space(x - 0x01, y))
+        push!(neighbours, (x - 0x01, y, 0x07))
     end
     return neighbours
 end
 
-function is_in_board_space(x::Int, y::Int)    
+function is_in_board_space(x::Coord, y::Coord)    
     return x > 0 && x <= NUM_COLS && y > 0 && y <= NUM_ROWS
 end
 
-function opponent_in_direction(x::Int, y::Int, d::Int, opponent::Player, board::Board)
+function opponent_in_direction(x::Coord, y::Coord, d::Direction, opponent::Player, board::Board)
     x1, y1 = new_coords(x, y, d)
     
     if is_in_board_space(x1, y1)
@@ -636,7 +655,9 @@ end
 function run_test()
     spec = GameSpec()
     env = GI.init(spec)
+    i = 0
     while !GI.game_terminated(env)
+        i += 1 
         # println(GI.render(env))
         # println("its player $(env.current_player == WHITE ? " white's " : " black's ") turn!")
         # print_possible_action_strings(env)
@@ -645,7 +666,13 @@ function run_test()
         # input = parse(Int, readline())
         # GI.play!(env, input)
     end
-    return spec, env
+    return i, spec, env
+end
+
+function performance_test(n::Int)
+    for i in 1:n
+        run_test()
+    end
 end
 
 # spec, env = run_test()
