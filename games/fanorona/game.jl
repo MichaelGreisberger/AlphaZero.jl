@@ -101,7 +101,6 @@ end
 ##### Operations on envs
 #####
 
-# TODO: Update with functions accordingly!
 function GI.set_state!(g::GameEnv, state)
     g.board = copy(state.board)
     g.current_player = state.current_player
@@ -384,38 +383,6 @@ function action_index(x::Coord, y::Coord, direction::Direction)
     return action_index(cord_to_pos(x, y), direction)
 end
 
-# function encode_action(position::Int, direction::Int, type::ActionType)
-#     # println("position: $position, direction: $direction, tpye: $type")
-#     x0, y0 = pos_to_cord(position)
-#     x1 = Int
-#     y1 = Int
-#     (x1, y1) = new_coords(x0, y0, direction)
-#     return encode_action(x0, y0, x1, y1, type)
-# end
-
-# function encode_action(x0::Int, y0::Int, x1::Int, y1::Int, type::ActionType)    
-#     # println("from (x, y): ($x0, $y0), to: ($x1, $y1), type: $type")
-    
-#     # x0 uses bit 16 to 13
-#     # y0 uses bit 12 to 10
-#     # x1 uses bit 9 to 6
-#     # y1 uses bit 5 to 3
-#     # type uses bit 2 to 1
-#     return convert(Action, (x0 << 12) + (y0 << 9) + (x1 << 5) + (y1 << 2) + UInt8(type))
-# end
-
-# function decode_action(action::Action)
-#     if action == 0x0000
-#         return 0, 0, 0, 0, pass
-#     end
-#     type = ActionType(action & 3)
-#     y1 = (action >> 2) & 7
-#     x1 = (action >> 5) & 15
-#     y0 = (action >> 9) & 7
-#     x0 = (action >> 12) & 15
-#     return x0, y0, x1, y1, type
-# end
-
 function new_coords(x0::Coord, y0::Coord, direction::Direction)
     x1 = Int # destination coordinate x (columns)
     y1 = Int # destination coordinate y (rows)
@@ -674,5 +641,3 @@ function performance_test(n::Int)
         run_test()
     end
 end
-
-# spec, env = run_test()
