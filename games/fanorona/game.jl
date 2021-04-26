@@ -90,8 +90,6 @@ struct GameSpec <: GI.AbstractGameSpec
 end
 
 """
-    GameEnv
-
 Implementation of abstract base type for a game environment.
 
 Intuitively, a game environment holds a game specification and a current state.
@@ -110,8 +108,6 @@ mutable struct GameEnv <: GI.AbstractGameEnv
 end
 
 """
-    init(::GameSpec) :: GameEnv
-
 Create a new game environment in an initial state depending on the size specified.
 """
 function GI.init(spec::GameSpec)
@@ -123,8 +119,6 @@ function GI.init(spec::GameSpec)
 end
 
 """
-    spec(game::GameEnv) :: GameSpec
-
 Return the game specification of an environment.
 """
 GI.spec(g::GameEnv) = g.spec
@@ -134,22 +128,16 @@ GI.spec(g::GameEnv) = g.spec
 #####
 
 """
-    two_players(::GameSpec) :: Bool
-
 Return whether or not a game is a two-players game.
 """
 GI.two_players(::GameSpec) = true
 
 """
-    actions(::GameSpec)
-
 Return the vector of all game actions.
 """
 GI.actions(spec::GameSpec) = spec.possible_actions
 
 """
-    vectorize_state(::GameSpec, state) :: Array{Float32}
-
 Return a vectorized representation of a given state.
 """
 function GI.vectorize_state(spec::GameSpec, state)
@@ -165,8 +153,6 @@ end
 #####
 
 """
-    set_state!(game::GameEnv, state)
-
 Modify the state of a game environment in place.
 """
 function GI.set_state!(g::GameEnv, state)
@@ -186,8 +172,6 @@ function GI.set_state!(g::GameEnv, state)
 end
 
 """
-    current_state(game::GameEnv)
-
 Return the game state.
 """
 function GI.current_state(g::GameEnv)
@@ -202,8 +186,6 @@ function GI.current_state(g::GameEnv)
 end
 
 """
-    game_terminated(::GameEnv)
-
 Return a boolean indicating whether or not the game is in a terminal state.
 """
 function GI.game_terminated(g::GameEnv)
@@ -211,8 +193,6 @@ function GI.game_terminated(g::GameEnv)
 end
 
 """
-    white_playing(::GameEnv) :: Bool
-
 Return `true` if white is to play and `false` otherwise.
 """
 function GI.white_playing(g::GameEnv)
@@ -220,8 +200,6 @@ function GI.white_playing(g::GameEnv)
 end
 
 """
-    actions_mask(::GameEnv)
-
 Return a boolean mask indicating what actions are available.
 
 The following identities must hold:
@@ -234,8 +212,6 @@ function GI.actions_mask(g::GameEnv)
 end
 
 """
-    play!(game::GameEnv, action::Action)
-
 Update the game environment by making the current player perform `action`.
 Note that this function does not have to be deterministic.
 """
@@ -262,8 +238,6 @@ function GI.play!(g::GameEnv, action::Action)
 end
 
 """
-    white_reward(game::GameEnv)
-
 Return the intermediate reward obtained by the white player after the last
 transition step. The result is undetermined when called at an initial state.
 """
@@ -276,8 +250,6 @@ function GI.white_reward(g::GameEnv)
 end
 
 """
-    heuristic_value(game::GameEnv)
-
 Return a heuristic estimate of the state value for the current player.
 
 The given state must be nonfinal and returned values must belong to the
@@ -300,8 +272,6 @@ end
 #####
 
 """
-    render(game::GameEnv)
-
 Print the game state on the standard output.
 """
 function GI.render(g::GameEnv)
@@ -346,8 +316,6 @@ function GI.render(g::GameEnv)
 end
 
 """
-    action_string(::GameSpec, action::Action) :: String
-
 Return a human-readable string representing the provided action.
 """
 function GI.action_string(::GameSpec, action::Action)
@@ -359,8 +327,6 @@ function GI.action_string(::GameSpec, action::Action)
 end
 
 """
-    parse_action(::GameSpec, str::String)
-
 Return the action described by string `str` or `nothing` if `str` does not
 denote a valid action.
 """
@@ -379,8 +345,6 @@ function GI.parse_action(::GameSpec, str::String)
 end
 
 """
-    read_state(game_spec::GameSpec)
-
 Read a state from the standard input.
 Return the corresponding state (with type `state_type(game_spec)`)
 or `nothing` in case of an invalid input.
