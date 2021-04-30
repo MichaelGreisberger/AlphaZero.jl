@@ -8,7 +8,7 @@ using StaticArrays
 const EMPTY = 0x00
 const WHITE = 0x01
 const BLACK = 0x02
-const DEFAULT_SIZE = medium
+const DEFAULT_SIZE = large
 
 ### TYPES
 const Player = UInt8
