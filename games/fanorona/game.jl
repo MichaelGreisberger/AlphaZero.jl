@@ -8,6 +8,7 @@ using StaticArrays
 const EMPTY = 0x00
 const WHITE = 0x01
 const BLACK = 0x02
+const DEFAULT_SIZE = medium
 
 ### TYPES
 const Player = UInt8
@@ -73,7 +74,7 @@ struct GameSpec <: GI.AbstractGameSpec
     initial_board :: Board
 
     function GameSpec()
-        return GameSpec(large)
+        return GameSpec(DEFAULT_SIZE)
     end
 
     function GameSpec(size::BoardSize)
@@ -141,10 +142,12 @@ GI.actions(spec::GameSpec) = spec.possible_actions
 Return a vectorized representation of a given state.
 """
 function GI.vectorize_state(spec::GameSpec, state)
-    board = state.current_player == WHITE ? state.board : flip_colors(spec.num_cells, state.board)
+    board = state.current_player == WHITE ? state.board : flip_colors(state.board)
     return Float32[
-        board[position]
-        for position in 1:spec.num_cells
+        board[cord_to_pos(spec, col, row)] == c
+        for col in 0x01:spec.num_cols,
+            row in 0x01:spec.num_rows,
+            c in [EMPTY, WHITE, BLACK]
     ]
 end
 
@@ -235,6 +238,9 @@ function GI.play!(g::GameEnv, action::Action)
             swap_player!(g)
         end
     end
+    # if g.white_pieces + g.black_pieces < 5
+    #     print_state_information(g)
+    # end
 end
 
 """
@@ -451,10 +457,10 @@ flip_cell_color(c::Cell) = c == EMPTY ? EMPTY : other(c)
 """
 Flips the values of the whole board.
 """
-function flip_colors(num_cells::UInt8, board::Board)
+function flip_colors(board::Board)
     return Cell[
         flip_cell_color(board[position])
-        for position in 1:num_cells
+        for position in 1:length(board)
     ]
 end
 
@@ -824,6 +830,7 @@ prints the current state and all possible actions in it.
 """
 function print_state_information(g::GameEnv)
     println("state: $(GI.current_state(g))")
+    println(GI.render(g))
     print_possible_action_strings(g)
 end
 
